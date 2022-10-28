@@ -1,69 +1,102 @@
-from logging import exception
-from msilib.schema import Error
-from time import sleep
-from selenium import webdriver
+import os
+
+from dotenv import load_dotenv
+
+import requests
+
+from seleniumwire import webdriver
 from selenium.webdriver.support.ui import Select
-import sys
+from time import sleep
 
 
-# Check the box
-def checkBox(driver):
-    sleep(5)
-    driver.find_element_by_xpath('//*[@id="xi-cb-1"]').click()
-    sleep(2)
-    driver.find_element_by_xpath('//*[@id="applicationForm:managedForm:proceed"]').click()
-    sleep(5)
+load_dotenv()
+
+def interceptor(request):
+    del request.headers["User-Agent"]
+    request.headers[
+        "User-Agent"
+    ] = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36"
 
 
-# Select Country
-def fillForm(driver):
-    select_country = Select(driver.find_element_by_name("sel_staat"))
-    sleep(2)
-    select_country.select_by_value('368')
-    sleep(2)
+slack_webhook_url = os.getenv("SLACK_WEBHOOK_URL")
+if not slack_webhook_url:
+    raise Exception("Missing environment variable: SLACK_WEBHOOK_URL")
 
-    # Option 2
-    select_opt1 = Select(driver.find_element_by_name("personenAnzahl_normal"))
-    sleep(2)
-    select_opt1.select_by_value('1')
-    sleep(2)
+try:
+    opts = webdriver.ChromeOptions()
+    opts.add_experimental_option("excludeSwitches", ["enable-automation"])
+    opts.add_experimental_option("useAutomationExtension", False)
+    opts.add_argument("--disable-blink-features=AutomationControlled")
 
-    # Option 3
-    select_opt1 = Select(driver.find_element_by_name("lebnBrMitFmly"))
-    sleep(2)
-    select_opt1.select_by_value('2')
-    sleep(2)
+    driver = webdriver.Chrome(options=opts)
+    driver.request_interceptor = interceptor
 
-    # Select Student option
-    driver.find_element_by_xpath('//*[@id="xi-div-30"]/div[1]/label').click()
-    sleep(2)
-    driver.find_element_by_xpath('//*[@id="inner-368-0-1"]/div/div[1]/label').click()
-    sleep(2)
-    driver.find_element_by_xpath('//*[@id="SERVICEWAHL_DE368-0-1-3-305244"]').click()
-    sleep(2)
+    driver.execute_script(
+        "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+    )
+    driver.get("https://otv.verwalt-berlin.de/ams/TerminBuchen")
+    sleep(2.0)
 
+    driver.find_element("link text", "Termin buchen").click()
+    print("Termin Buchen")
+    sleep(2.0)
 
-def refresh(driver):
-    # driver.find_element_by_xpath('//*[@id="applicationForm:managedForm:proceed"]').click()
-    # sleep(10)
-    while(driver.find_element_by_xpath('//*[@id="anton-remote-back"]')):
-        driver.find_element_by_xpath('//*[@id="applicationForm:managedForm:proceed"]').click()
-        sleep(10)
+    driver.find_element("id", "xi-cb-1").click()
+    print(
+        "Ich erkläre hiermit, die Informationen auf dieser Seite gelesen und verstanden zu haben. Mit der Nutzung dieses Service-Angebots erteile ich meine Zustimmung zur Erhebung und Nutzung meiner persönlichen Daten.*"
+    )
+    sleep(2.0)
 
+    driver.find_element("id", "applicationForm:managedForm:proceed").click()
+    print("Weiter")
+    sleep(4.0)
 
-def main():    
-    driver = webdriver.Chrome('C:/Users/Rick/Downloads/chromedriver_win32/chromedriver')
-    driver.implicitly_wait(0.5)
-    driver.get('https://otv.verwalt-berlin.de/ams/TerminBuchen/wizardng?sprachauswahl=en')
+    nationality = Select(driver.find_element("id", "xi-sel-400"))
+    try:
+        nationality.select_by_visible_text("Brasilien")
+    except:
+        nationality.select_by_visible_text("Brazil")
+    print("Ich bin Brasilien")
+    sleep(2.0)
 
-    input('Continue?')
+    persons = Select(driver.find_element("id", "xi-sel-422"))
+    persons.select_by_visible_text("eine Person")
+    print("Nur mich")
+    sleep(2.0)
 
-    checkBox(driver)
-    input('Continue?')    
-    fillForm(driver)
-    input('Continue?')
-    refresh(driver)
+    plusFamily = Select(driver.find_element("id", "xi-sel-427"))
+    plusFamily.select_by_visible_text("nein")
+    print("Kein familien")
+    sleep(2.0)
 
-    
-if __name__ == '__main__':
-    main()
+    driver.find_element("id", "applicationForm:managedForm:proceed").click()
+    print("Weiter")
+    sleep(4.0)
+
+    driver.find_element("class name", "kachel-327-0-1").click()
+    print("Aufenthaltstitel - beantragen")
+    sleep(3.0)
+
+    driver.find_element("class name", "accordion-327-0-1-1").click()
+    print("Erwerbstätigkeit")
+    sleep(3.0)
+
+    driver.find_element("id", "SERVICEWAHL_DE327-0-1-1-305304").click()
+    print("Aufenthaltserlaubnis für Fachkräfte mit Berufsausbildung (§ 18a)")
+    sleep(3.0)
+
+    driver.find_element("id", "applicationForm:managedForm:proceed").click()
+    print("Weiter")
+    sleep(7.0)
+
+    err = driver.find_element("class name", "errorMessage")
+    if not err:
+        requests.post(url=slack_webhook_url, data='{"text":"Available slot detected! Run to the PC!"}')
+        print("Waiting for finishing the appointment")
+    else:
+        print(
+            "Für die gewählte Dienstleistung sind aktuell keine Termine frei! Bitte versuchen Sie es zu einem späteren Zeitpunkt erneut."
+        )
+        driver.close()
+except:
+    driver.close()
