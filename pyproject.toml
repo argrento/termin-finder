@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "termin-finder"
+version = "0.1.0"
+description = "Find a termin at Berlin for the BC"
+authors = ["argz <do-not-write-me-please>"]
+license = "The Unlicense"
+readme = "README.md"
+packages = [{include = "termin_finder"}]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+python-dotenv = "^0.21.0"
+requests = "^2.28.1"
+selenium = "^4.5.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
